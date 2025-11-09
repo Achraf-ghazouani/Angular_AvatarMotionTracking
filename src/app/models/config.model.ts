@@ -45,12 +45,12 @@ export interface AppConfig {
 
 export const DEFAULT_CONFIG: AppConfig = {
   mediapipe: {
-    modelComplexity: 1,
+    modelComplexity: 2, // 🎯 Haute précision (0=rapide, 1=moyen, 2=précis)
     smoothLandmarks: true,
     enableSegmentation: false,
     smoothSegmentation: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
+    minDetectionConfidence: 0.7, // 🎯 Augmenté pour meilleure détection
+    minTrackingConfidence: 0.7  // 🎯 Augmenté pour meilleur suivi
   },
   threejs: {
     antialias: true,

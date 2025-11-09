@@ -169,6 +169,22 @@ export class AvatarLoaderService {
       }
     });
 
+    // 🎯 NE PAS initialiser la pose - laisser Kalidokit gérer
+    // L'initialisation forcée cause des conflits avec le tracking
+    
+    // 🔍 Log des rotations initiales des bras
+    if (vrm.humanoid) {
+      const leftArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+      const rightArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+      console.log('🔍 Initial arm rotations:');
+      console.log('   Left:', leftArm ? 
+        `x=${leftArm.rotation.x.toFixed(2)}, y=${leftArm.rotation.y.toFixed(2)}, z=${leftArm.rotation.z.toFixed(2)}` : 
+        'not found');
+      console.log('   Right:', rightArm ? 
+        `x=${rightArm.rotation.x.toFixed(2)}, y=${rightArm.rotation.y.toFixed(2)}, z=${rightArm.rotation.z.toFixed(2)}` : 
+        'not found');
+    }
+
     // Extraire les bones VRM
     const bones = new Map<string, THREE.Bone>();
     if (vrm.humanoid) {
@@ -374,41 +390,73 @@ export class AvatarLoaderService {
   }
 
   /**
+   * 🎯 Initialise la pose du VRM (baisser les bras de la T-pose)
+   */
+  private initializeVRMPose(vrm: VRM): void {
+    if (!vrm.humanoid) return;
+
+    // Baisser les bras à ~45 degrés pour une pose neutre
+    const leftUpperArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+    const rightUpperArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+
+    if (leftUpperArm) {
+      // Rotation Z positive pour baisser le bras gauche
+      leftUpperArm.rotation.z = THREE.MathUtils.degToRad(45);
+      console.log('🎯 Left arm lowered from T-pose');
+    }
+
+    if (rightUpperArm) {
+      // Rotation Z négative pour baisser le bras droit
+      rightUpperArm.rotation.z = THREE.MathUtils.degToRad(-45);
+      console.log('🎯 Right arm lowered from T-pose');
+    }
+
+    // Mettre à jour le VRM
+    vrm.update(0);
+  }
+
+  /**
    * Applique le tracking Kalidokit à un avatar VRM
    */
   applyTrackingToVRM(vrm: VRM, results: KalidoKitResults): void {
     if (!vrm.humanoid) return;
 
     const riggedResults = results;
+    
+    // 🎯 Facteur de lissage pour mouvements plus naturels
+    const LERP_FACTOR = 0.35; // Plus élevé = plus réactif (0.2-0.5 recommandé)
 
     // Head rotation
     if (riggedResults.Face?.head?.degrees && vrm.humanoid.getNormalizedBoneNode('head')) {
       const headBone = vrm.humanoid.getNormalizedBoneNode('head')!;
-      headBone.rotation.set(
+      const targetRotation = new THREE.Euler(
         THREE.MathUtils.degToRad(riggedResults.Face.head.degrees.x),
         THREE.MathUtils.degToRad(riggedResults.Face.head.degrees.y),
         THREE.MathUtils.degToRad(riggedResults.Face.head.degrees.z)
       );
+      
+      // 🎯 Interpolation pour mouvement fluide
+      headBone.rotation.x = THREE.MathUtils.lerp(headBone.rotation.x, targetRotation.x, LERP_FACTOR);
+      headBone.rotation.y = THREE.MathUtils.lerp(headBone.rotation.y, targetRotation.y, LERP_FACTOR);
+      headBone.rotation.z = THREE.MathUtils.lerp(headBone.rotation.z, targetRotation.z, LERP_FACTOR);
     }
 
     // Spine rotation
     if (riggedResults.Pose?.Spine && vrm.humanoid.getNormalizedBoneNode('spine')) {
       const spineBone = vrm.humanoid.getNormalizedBoneNode('spine')!;
-      spineBone.rotation.set(
-        riggedResults.Pose.Spine.x || 0,
-        riggedResults.Pose.Spine.y || 0,
-        riggedResults.Pose.Spine.z || 0
-      );
+      // 🎯 Interpolation pour mouvement fluide du torse
+      spineBone.rotation.x = THREE.MathUtils.lerp(spineBone.rotation.x, riggedResults.Pose.Spine.x || 0, LERP_FACTOR);
+      spineBone.rotation.y = THREE.MathUtils.lerp(spineBone.rotation.y, riggedResults.Pose.Spine.y || 0, LERP_FACTOR);
+      spineBone.rotation.z = THREE.MathUtils.lerp(spineBone.rotation.z, riggedResults.Pose.Spine.z || 0, LERP_FACTOR);
     }
 
     // Hips
     if (riggedResults.Pose?.Hips?.rotation && vrm.humanoid.getNormalizedBoneNode('hips')) {
       const hipsBone = vrm.humanoid.getNormalizedBoneNode('hips')!;
-      hipsBone.rotation.set(
-        riggedResults.Pose.Hips.rotation.x || 0,
-        riggedResults.Pose.Hips.rotation.y || 0,
-        riggedResults.Pose.Hips.rotation.z || 0
-      );
+      // 🎯 Interpolation pour mouvement fluide des hanches
+      hipsBone.rotation.x = THREE.MathUtils.lerp(hipsBone.rotation.x, riggedResults.Pose.Hips.rotation.x || 0, LERP_FACTOR);
+      hipsBone.rotation.y = THREE.MathUtils.lerp(hipsBone.rotation.y, riggedResults.Pose.Hips.rotation.y || 0, LERP_FACTOR);
+      hipsBone.rotation.z = THREE.MathUtils.lerp(hipsBone.rotation.z, riggedResults.Pose.Hips.rotation.z || 0, LERP_FACTOR);
     }
 
     // Left Arm
@@ -416,10 +464,36 @@ export class AvatarLoaderService {
     // Right Arm
     this.applyArmRotation(vrm, 'right', riggedResults.Pose);
 
+    // 🔍 Debug occasionnel (toutes les 2 secondes environ)
+    if (Math.random() < 0.01) {
+      const leftArm = vrm.humanoid?.getNormalizedBoneNode('leftUpperArm');
+      const rightArm = vrm.humanoid?.getNormalizedBoneNode('rightUpperArm');
+      console.log('🎯 TRACKING DEBUG:');
+      console.log('   Kalidokit LeftArm:', riggedResults.Pose?.LeftUpperArm);
+      console.log('   Kalidokit RightArm:', riggedResults.Pose?.RightUpperArm);
+      console.log('   VRM LeftArm rotation:', leftArm ? 
+        `x=${leftArm.rotation.x.toFixed(2)}, y=${leftArm.rotation.y.toFixed(2)}, z=${leftArm.rotation.z.toFixed(2)}` : 'N/A');
+      console.log('   VRM RightArm rotation:', rightArm ? 
+        `x=${rightArm.rotation.x.toFixed(2)}, y=${rightArm.rotation.y.toFixed(2)}, z=${rightArm.rotation.z.toFixed(2)}` : 'N/A');
+    }
+
     // Left Leg
     this.applyLegRotation(vrm, 'left', riggedResults.Pose);
     // Right Leg
     this.applyLegRotation(vrm, 'right', riggedResults.Pose);
+
+    // 🔍 Debug jambes - log occasionnel
+    if (Math.random() < 0.01) {
+      const leftLeg = vrm.humanoid?.getNormalizedBoneNode('leftUpperLeg');
+      const rightLeg = vrm.humanoid?.getNormalizedBoneNode('rightUpperLeg');
+      console.log('🦵 LEG TRACKING DEBUG:');
+      console.log('   Kalidokit LeftUpperLeg:', riggedResults.Pose?.LeftUpperLeg);
+      console.log('   Kalidokit RightUpperLeg:', riggedResults.Pose?.RightUpperLeg);
+      console.log('   VRM LeftLeg rotation:', leftLeg ? 
+        `x=${leftLeg.rotation.x.toFixed(2)}, y=${leftLeg.rotation.y.toFixed(2)}, z=${leftLeg.rotation.z.toFixed(2)}` : 'N/A');
+      console.log('   VRM RightLeg rotation:', rightLeg ? 
+        `x=${rightLeg.rotation.x.toFixed(2)}, y=${rightLeg.rotation.y.toFixed(2)}, z=${rightLeg.rotation.z.toFixed(2)}` : 'N/A');
+    }
 
     // Hands
     if (riggedResults.LeftHand) {
@@ -496,24 +570,41 @@ export class AvatarLoaderService {
   private applyArmRotation(vrm: VRM, side: 'left' | 'right', pose: any): void {
     const Side = side === 'left' ? 'Left' : 'Right';
     const sideKey = side === 'left' ? 'left' : 'right';
-
+    const LERP_FACTOR = 0.7; // 🎯 TRÈS réactif pour voir les mouvements
+    
+    // Upper Arm (Épaule + bras supérieur)
     const upperArm = vrm.humanoid?.getNormalizedBoneNode(`${sideKey}UpperArm`);
-    const lowerArm = vrm.humanoid?.getNormalizedBoneNode(`${sideKey}LowerArm`);
-
     if (pose?.[`${Side}UpperArm`] && upperArm) {
-      upperArm.rotation.set(
-        pose[`${Side}UpperArm`].x || 0,
-        pose[`${Side}UpperArm`].y || 0,
-        pose[`${Side}UpperArm`].z || 0
-      );
+      const armData = pose[`${Side}UpperArm`];
+      if (armData && (armData.x !== undefined || armData.y !== undefined || armData.z !== undefined)) {
+        // 🎯 Utiliser les valeurs directement SANS offset pour tester
+        const targetX = (armData.x || 0);
+        const targetY = (armData.y || 0);
+        const targetZ = (armData.z || 0);
+        
+        upperArm.rotation.x = THREE.MathUtils.lerp(upperArm.rotation.x, targetX, LERP_FACTOR);
+        upperArm.rotation.y = THREE.MathUtils.lerp(upperArm.rotation.y, targetY, LERP_FACTOR);
+        upperArm.rotation.z = THREE.MathUtils.lerp(upperArm.rotation.z, targetZ, LERP_FACTOR);
+        
+        // 🔍 Log détaillé occasionnel
+        if (Math.random() < 0.005 && side === 'left') {
+          console.log(`💪 ${Side}UpperArm:`, 
+            `Kalido(${targetX.toFixed(2)}, ${targetY.toFixed(2)}, ${targetZ.toFixed(2)}) →`,
+            `VRM(${upperArm.rotation.x.toFixed(2)}, ${upperArm.rotation.y.toFixed(2)}, ${upperArm.rotation.z.toFixed(2)})`
+          );
+        }
+      }
     }
 
+    // Lower Arm (Avant-bras)
+    const lowerArm = vrm.humanoid?.getNormalizedBoneNode(`${sideKey}LowerArm`);
     if (pose?.[`${Side}LowerArm`] && lowerArm) {
-      lowerArm.rotation.set(
-        pose[`${Side}LowerArm`].x || 0,
-        pose[`${Side}LowerArm`].y || 0,
-        pose[`${Side}LowerArm`].z || 0
-      );
+      const armData = pose[`${Side}LowerArm`];
+      if (armData && (armData.x !== undefined || armData.y !== undefined || armData.z !== undefined)) {
+        lowerArm.rotation.x = THREE.MathUtils.lerp(lowerArm.rotation.x, armData.x || 0, LERP_FACTOR);
+        lowerArm.rotation.y = THREE.MathUtils.lerp(lowerArm.rotation.y, armData.y || 0, LERP_FACTOR);
+        lowerArm.rotation.z = THREE.MathUtils.lerp(lowerArm.rotation.z, armData.z || 0, LERP_FACTOR);
+      }
     }
   }
 
@@ -523,24 +614,30 @@ export class AvatarLoaderService {
   private applyLegRotation(vrm: VRM, side: 'left' | 'right', pose: any): void {
     const Side = side === 'left' ? 'Left' : 'Right';
     const sideKey = side === 'left' ? 'left' : 'right';
+    const LERP_FACTOR = 0.5; // 🎯 Plus réactif pour les jambes
 
+    // Upper Leg
     const upperLeg = vrm.humanoid?.getNormalizedBoneNode(`${sideKey}UpperLeg`);
-    const lowerLeg = vrm.humanoid?.getNormalizedBoneNode(`${sideKey}LowerLeg`);
-
     if (pose?.[`${Side}UpperLeg`] && upperLeg) {
-      upperLeg.rotation.set(
-        pose[`${Side}UpperLeg`].x || 0,
-        pose[`${Side}UpperLeg`].y || 0,
-        pose[`${Side}UpperLeg`].z || 0
-      );
+      const legData = pose[`${Side}UpperLeg`];
+      // 🎯 Vérifier que les données existent
+      if (legData && (legData.x !== undefined || legData.y !== undefined || legData.z !== undefined)) {
+        upperLeg.rotation.x = THREE.MathUtils.lerp(upperLeg.rotation.x, legData.x || 0, LERP_FACTOR);
+        upperLeg.rotation.y = THREE.MathUtils.lerp(upperLeg.rotation.y, legData.y || 0, LERP_FACTOR);
+        upperLeg.rotation.z = THREE.MathUtils.lerp(upperLeg.rotation.z, legData.z || 0, LERP_FACTOR);
+      }
     }
 
+    // Lower Leg
+    const lowerLeg = vrm.humanoid?.getNormalizedBoneNode(`${sideKey}LowerLeg`);
     if (pose?.[`${Side}LowerLeg`] && lowerLeg) {
-      lowerLeg.rotation.set(
-        pose[`${Side}LowerLeg`].x || 0,
-        pose[`${Side}LowerLeg`].y || 0,
-        pose[`${Side}LowerLeg`].z || 0
-      );
+      const legData = pose[`${Side}LowerLeg`];
+      // 🎯 Vérifier que les données existent
+      if (legData && (legData.x !== undefined || legData.y !== undefined || legData.z !== undefined)) {
+        lowerLeg.rotation.x = THREE.MathUtils.lerp(lowerLeg.rotation.x, legData.x || 0, LERP_FACTOR);
+        lowerLeg.rotation.y = THREE.MathUtils.lerp(lowerLeg.rotation.y, legData.y || 0, LERP_FACTOR);
+        lowerLeg.rotation.z = THREE.MathUtils.lerp(lowerLeg.rotation.z, legData.z || 0, LERP_FACTOR);
+      }
     }
   }
 

@@ -42,7 +42,8 @@ export class TrackingService {
 
   // Smoothing buffers for stabilization (Phase 2)
   private smoothingBuffer: KalidoKitResults[] = [];
-  private readonly SMOOTHING_WINDOW = 5;
+  private readonly SMOOTHING_WINDOW = 3; // 🎯 Réduit de 5 à 3 pour moins de latence
+  private lastValidPose: any = null; // 🎯 Garder la dernière pose valide
 
   constructor() {}
 
@@ -93,7 +94,7 @@ export class TrackingService {
         video: {
           width: { ideal: 1280 },
           height: { ideal: 720 },
-          frameRate: { ideal: 30 }
+          frameRate: { ideal: 60 } // 🎯 Augmenté à 60fps pour meilleure réactivité
         }
       });
 
@@ -207,8 +208,8 @@ export class TrackingService {
           runtime: 'mediapipe',
           video: this.videoElement!,
           imageSize: { width: 1280, height: 720 },
-          smoothBlink: true,
-          blinkSettings: [0.25, 0.75]
+          smoothBlink: false, // 🎯 Désactivé pour plus de réactivité
+          blinkSettings: [0.2, 0.8] // 🎯 Seuils ajustés pour meilleure détection
         });
       }
 
@@ -220,6 +221,39 @@ export class TrackingService {
           imageSize: { width: 1280, height: 720 },
           enableLegs: true
         });
+
+        // 🎯 Valider et conserver les données des bras ET des jambes
+        if (kalidoResults.Pose) {
+          // Si les bras ou jambes sont valides, sauvegarder
+          if (this.isArmDataValid(kalidoResults.Pose.LeftUpperArm) || 
+              this.isArmDataValid(kalidoResults.Pose.RightUpperArm) ||
+              this.isArmDataValid(kalidoResults.Pose.LeftUpperLeg) ||
+              this.isArmDataValid(kalidoResults.Pose.RightUpperLeg)) {
+            this.lastValidPose = {
+              // Bras
+              LeftUpperArm: kalidoResults.Pose.LeftUpperArm,
+              RightUpperArm: kalidoResults.Pose.RightUpperArm,
+              LeftLowerArm: kalidoResults.Pose.LeftLowerArm,
+              RightLowerArm: kalidoResults.Pose.RightLowerArm,
+              // 🦵 Jambes
+              LeftUpperLeg: kalidoResults.Pose.LeftUpperLeg,
+              RightUpperLeg: kalidoResults.Pose.RightUpperLeg,
+              LeftLowerLeg: kalidoResults.Pose.LeftLowerLeg,
+              RightLowerLeg: kalidoResults.Pose.RightLowerLeg
+            };
+          } else if (this.lastValidPose) {
+            // Utiliser les dernières valeurs valides si disponibles
+            kalidoResults.Pose.LeftUpperArm = this.lastValidPose.LeftUpperArm;
+            kalidoResults.Pose.RightUpperArm = this.lastValidPose.RightUpperArm;
+            kalidoResults.Pose.LeftLowerArm = this.lastValidPose.LeftLowerArm;
+            kalidoResults.Pose.RightLowerArm = this.lastValidPose.RightLowerArm;
+            // 🦵 Jambes
+            kalidoResults.Pose.LeftUpperLeg = this.lastValidPose.LeftUpperLeg;
+            kalidoResults.Pose.RightUpperLeg = this.lastValidPose.RightUpperLeg;
+            kalidoResults.Pose.LeftLowerLeg = this.lastValidPose.LeftLowerLeg;
+            kalidoResults.Pose.RightLowerLeg = this.lastValidPose.RightLowerLeg;
+          }
+        }
       }
 
       // Hand tracking
@@ -308,7 +342,7 @@ export class TrackingService {
   private generateWeights(length: number): number[] {
     const weights: number[] = [];
     for (let i = 0; i < length; i++) {
-      weights.push(Math.pow(1.5, i)); // Croissance exponentielle
+      weights.push(Math.pow(2.0, i)); // 🎯 Augmenté de 1.5 à 2.0 pour plus de réactivité
     }
     return weights;
   }
@@ -325,6 +359,15 @@ export class TrackingService {
       trackingQuality: quality,
       timestamp: Date.now()
     });
+  }
+
+  /**
+   * 🎯 Vérifie si les données de bras sont valides
+   */
+  private isArmDataValid(armData: any): boolean {
+    if (!armData || typeof armData !== 'object') return false;
+    // Vérifier qu'au moins une propriété existe et n'est pas undefined
+    return armData.x !== undefined || armData.y !== undefined || armData.z !== undefined;
   }
 
   /**
