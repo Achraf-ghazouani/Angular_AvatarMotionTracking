@@ -52,6 +52,16 @@ export class TrackingService {
    */
   async initialize(config: MediaPipeConfig): Promise<void> {
     try {
+      // 🔧 Détruire l'instance existante si présente
+      if (this.holistic) {
+        try {
+          this.holistic.close();
+        } catch (e) {
+          console.warn('⚠️ Error closing previous holistic instance:', e);
+        }
+        this.holistic = null;
+      }
+
       this.holistic = new Holistic({
         locateFile: (file) => {
           return `assets/mediapipe/holistic/${file}`;
@@ -92,9 +102,9 @@ export class TrackingService {
       // Vérifier l'accès à la webcam
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 60 } // 🎯 Augmenté à 60fps pour meilleure réactivité
+          width: { ideal: 640 },  // 🚀 Réduit de 1280 à 640 pour meilleure performance
+          height: { ideal: 480 }, // 🚀 Réduit de 720 à 480 pour meilleure performance
+          frameRate: { ideal: 30 } // 🚀 Réduit de 60fps à 30fps pour meilleure performance
         }
       });
 
@@ -109,8 +119,8 @@ export class TrackingService {
             await this.holistic.send({ image: this.videoElement });
           }
         },
-        width: 1280,
-        height: 720
+        width: 640,  // 🚀 Réduit pour meilleure performance
+        height: 480  // 🚀 Réduit pour meilleure performance
       });
 
       await this.camera.start();
@@ -207,7 +217,7 @@ export class TrackingService {
         kalidoResults.Face = Kalidokit.Face.solve(results.faceLandmarks, {
           runtime: 'mediapipe',
           video: this.videoElement!,
-          imageSize: { width: 1280, height: 720 },
+          imageSize: { width: 640, height: 480 }, // 🚀 Mis à jour pour correspondre à la résolution
           smoothBlink: false, // 🎯 Désactivé pour plus de réactivité
           blinkSettings: [0.2, 0.8] // 🎯 Seuils ajustés pour meilleure détection
         });
@@ -218,17 +228,24 @@ export class TrackingService {
         kalidoResults.Pose = Kalidokit.Pose.solve(results.poseLandmarks, results.poseLandmarks, {
           runtime: 'mediapipe',
           video: this.videoElement!,
-          imageSize: { width: 1280, height: 720 },
+          imageSize: { width: 640, height: 480 }, // 🚀 Mis à jour pour correspondre à la résolution
           enableLegs: true
         });
 
         // 🎯 Valider et conserver les données des bras ET des jambes
         if (kalidoResults.Pose) {
+          const leftArmValid = this.isArmDataValid(kalidoResults.Pose.LeftUpperArm);
+          const rightArmValid = this.isArmDataValid(kalidoResults.Pose.RightUpperArm);
+          const leftLegValid = this.isArmDataValid(kalidoResults.Pose.LeftUpperLeg);
+          const rightLegValid = this.isArmDataValid(kalidoResults.Pose.RightUpperLeg);
+
+          // ⚠️ Avertir si les bras ne sont pas détectés
+          if (!leftArmValid && !rightArmValid && Math.random() < 0.01) {
+            console.warn('⚠️ BRAS NON DÉTECTÉS! Vérifiez: 1) Éclairage suffisant 2) Caméra voit vos bras 3) Position face caméra');
+          }
+
           // Si les bras ou jambes sont valides, sauvegarder
-          if (this.isArmDataValid(kalidoResults.Pose.LeftUpperArm) || 
-              this.isArmDataValid(kalidoResults.Pose.RightUpperArm) ||
-              this.isArmDataValid(kalidoResults.Pose.LeftUpperLeg) ||
-              this.isArmDataValid(kalidoResults.Pose.RightUpperLeg)) {
+          if (leftArmValid || rightArmValid || leftLegValid || rightLegValid) {
             this.lastValidPose = {
               // Bras
               LeftUpperArm: kalidoResults.Pose.LeftUpperArm,
@@ -363,11 +380,24 @@ export class TrackingService {
 
   /**
    * 🎯 Vérifie si les données de bras sont valides
+   * Rejette les valeurs de T-pose par défaut (pas de mouvement détecté)
    */
   private isArmDataValid(armData: any): boolean {
     if (!armData || typeof armData !== 'object') return false;
-    // Vérifier qu'au moins une propriété existe et n'est pas undefined
-    return armData.x !== undefined || armData.y !== undefined || armData.z !== undefined;
+    
+    // Vérifier qu'au moins une propriété existe
+    const hasData = armData.x !== undefined || armData.y !== undefined || armData.z !== undefined;
+    if (!hasData) return false;
+    
+    // ⚠️ Rejeter les valeurs de T-pose par défaut de Kalidokit
+    // Si les bras sont exactement à (0, 0, ±1.25), c'est la pose par défaut = pas de détection
+    const isDefaultTPose = (
+      Math.abs(armData.x) < 0.01 && // x proche de 0
+      Math.abs(armData.y) < 0.01 && // y proche de 0
+      (Math.abs(armData.z - 1.25) < 0.01 || Math.abs(armData.z + 1.25) < 0.01) // z = ±1.25
+    );
+    
+    return !isDefaultTPose; // Valid si ce n'est PAS la pose par défaut
   }
 
   /**
