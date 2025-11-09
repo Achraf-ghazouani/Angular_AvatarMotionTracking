@@ -1,0 +1,357 @@
+<div class="app-container">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-content">
+      <h1 class="title">
+        <span class="icon">🎭</span>
+        {{ title }}
+      </h1>
+      
+      <div class="header-actions">
+        <button class="btn btn-secondary" (click)="toggleSettings()">
+          <span class="icon">⚙️</span>
+          {{ showSettings ? 'Hide' : 'Settings' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <div class="status-item">
+        <span class="status-dot" [class.active]="trackingState.isModelLoaded"></span>
+        <span>MediaPipe</span>
+      </div>
+      <div class="status-item">
+        <span class="status-dot" [class.active]="isSceneInitialized"></span>
+        <span>Three.js</span>
+      </div>
+      <div class="status-item">
+        <span class="status-dot" [class.active]="isAvatarLoaded"></span>
+        <span>Avatar</span>
+      </div>
+      <div class="status-item">
+        <span class="status-dot" [class.active]="isAiEnabled"></span>
+        <span>AI</span>
+      </div>
+      <div class="status-item">
+        <span class="status-dot" [class.active]="trackingState.isTracking"></span>
+        <span>Tracking</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Panneau latéral gauche -->
+    <aside class="sidebar sidebar-left">
+      <!-- Webcam Preview -->
+      <div class="panel">
+        <div class="panel-header">
+          <h3>📹 Webcam</h3>
+        </div>
+        <div class="panel-content">
+          <div class="video-container">
+            <video 
+              #videoElement 
+              class="video-preview"
+              [class.active]="trackingState.hasWebcam"
+              autoplay 
+              playsinline>
+            </video>
+            
+            @if (!trackingState.hasWebcam) {
+              <div class="video-placeholder">
+                <span class="placeholder-icon">📷</span>
+                <p>Camera not active</p>
+              </div>
+            }
+          </div>
+
+          <!-- Controls -->
+          <div class="controls">
+            @if (!trackingState.isTracking) {
+              <button 
+                class="btn btn-primary btn-block"
+                (click)="startTracking()"
+                [disabled]="!isSystemReady">
+                <span class="icon">▶️</span>
+                Start Tracking
+              </button>
+            } @else {
+              <button 
+                class="btn btn-danger btn-block"
+                (click)="stopTracking()">
+                <span class="icon">⏹️</span>
+                Stop Tracking
+              </button>
+            }
+          </div>
+
+          @if (!isSystemReady) {
+            <p class="info-text">⏳ Initializing system...</p>
+          }
+        </div>
+      </div>
+
+      <!-- Performance Metrics -->
+      <div class="panel">
+        <div class="panel-header">
+          <h3>📊 Performance</h3>
+        </div>
+        <div class="panel-content">
+          <div class="metric">
+            <div class="metric-label">FPS</div>
+            <div class="metric-value" [style.color]="fpsColor">
+              {{ performanceMetrics.fps }}
+            </div>
+            <div class="metric-target">Target: {{ config.targetFPS }}</div>
+          </div>
+
+          <div class="metric">
+            <div class="metric-label">Latency</div>
+            <div class="metric-value" [style.color]="latencyColor">
+              {{ performanceMetrics.latency | number:'1.0-0' }}ms
+            </div>
+            <div class="metric-target">Max: {{ config.maxLatencyMs }}ms</div>
+          </div>
+
+          <div class="metric">
+            <div class="metric-label">Quality</div>
+            <div class="metric-value" [style.color]="qualityColor">
+              {{ performanceMetrics.trackingQuality }}%
+            </div>
+            <div class="metric-target">Target: ≥90%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Avatar Loader Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <h3>🎭 Avatar</h3>
+        </div>
+        <div class="panel-content">
+          <div class="avatar-info">
+            @if (currentAvatarInfo) {
+              <div class="avatar-status">
+                <span class="status-dot active"></span>
+                <strong>{{ currentAvatarInfo.type.toUpperCase() }}</strong>
+              </div>
+              <div class="avatar-details">
+                <small>{{ currentAvatarInfo.bones.size }} bones detected</small>
+              </div>
+            } @else {
+              <div class="avatar-status">
+                <span class="status-dot"></span>
+                <strong style="color: #fbbf24;">⚠️ No avatar loaded</strong>
+              </div>
+              <div class="avatar-details">
+                <small style="color: rgba(255, 255, 255, 0.7);">Please upload an avatar to start</small>
+              </div>
+            }
+          </div>
+
+          <div class="file-upload">
+            <input 
+              type="file" 
+              #avatarFileInput
+              (change)="onAvatarFileSelected($event)"
+              accept=".vrm,.fbx,.glb,.gltf"
+              style="display: none;">
+            
+            <button 
+              class="btn btn-block"
+              [class.btn-primary]="!currentAvatarInfo"
+              [class.btn-secondary]="currentAvatarInfo"
+              (click)="avatarFileInput.click()"
+              [disabled]="trackingState.isTracking"
+              style="animation: pulse-glow 2s infinite;">
+              <span class="icon">📁</span>
+              {{ currentAvatarInfo ? 'Change Avatar' : 'Load Avatar' }}
+            </button>
+          </div>
+
+          <div class="avatar-presets">
+            <label class="preset-label">Quick Select:</label>
+            <button 
+              class="btn btn-sm btn-secondary"
+              (click)="loadPresetAvatar('default')"
+              [disabled]="trackingState.isTracking">
+              Default
+            </button>
+          </div>
+
+          @if (currentAvatarInfo) {
+            <div class="avatar-controls">
+              <label class="control-label">Scale Adjustment:</label>
+              <div class="scale-buttons">
+                <button class="btn btn-sm btn-secondary" (click)="adjustAvatarScale(0.1)">
+                  <span>−</span>
+                </button>
+                <span class="scale-value">{{ currentAvatarScale.toFixed(2) }}</span>
+                <button class="btn btn-sm btn-secondary" (click)="adjustAvatarScale(-0.1)">
+                  <span>+</span>
+                </button>
+              </div>
+              <button class="btn btn-sm btn-secondary btn-block" (click)="resetAvatarPosition()">
+                <span class="icon">🎯</span>
+                Center Avatar
+              </button>
+            </div>
+          }
+
+          <div class="avatar-info-text">
+            <small>Supported: .vrm, .fbx, .glb, .gltf</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Panel -->
+      @if (showSettings) {
+        <div class="panel">
+          <div class="panel-header">
+            <h3>⚙️ Settings</h3>
+          </div>
+          <div class="panel-content">
+            <div class="setting">
+              <label>
+                <input 
+                  type="checkbox" 
+                  [checked]="config.mediapipe.smoothLandmarks"
+                  (change)="updateMediaPipeConfig('smoothLandmarks', $event)">
+                Smooth Landmarks
+              </label>
+            </div>
+
+            <div class="setting">
+              <label>Model Complexity</label>
+              <select 
+                [value]="config.mediapipe.modelComplexity"
+                (change)="updateMediaPipeConfig('modelComplexity', $event)">
+                <option [value]="0">Low (Fast)</option>
+                <option [value]="1">Medium</option>
+                <option [value]="2">High (Accurate)</option>
+              </select>
+            </div>
+
+            <div class="setting">
+              <label>
+                <input 
+                  type="checkbox" 
+                  [checked]="config.ai.enabled"
+                  (change)="toggleAI()">
+                Enable AI Correction (Experimental)
+              </label>
+            </div>
+          </div>
+        </div>
+      }
+    </aside>
+
+    <!-- Zone de rendu 3D -->
+    <div class="scene-wrapper">
+      <div #sceneContainer class="scene-container"></div>
+      
+      <!-- Instructions -->
+      @if (!trackingState.isTracking) {
+        <div class="instructions">
+          <h2>🎬 Instructions</h2>
+          <ol>
+            <li><strong>First:</strong> Click "📁 Load Avatar" on the left panel to upload your avatar (.vrm, .fbx, .glb)</li>
+            <li><strong>Then:</strong> Click "Start Tracking" to enable your webcam</li>
+            <li>Position yourself in front of the camera</li>
+            <li>Your avatar will mirror your movements in real-time!</li>
+            <li>Try clicking on the red cube to interact!</li>
+          </ol>
+        </div>
+      }
+
+      <!-- Error Message -->
+      @if (errorMessage) {
+        <div class="error-banner">
+          <span class="icon">⚠️</span>
+          {{ errorMessage }}
+          <button class="btn-close" (click)="errorMessage = ''">×</button>
+        </div>
+      }
+    </div>
+
+    <!-- Panneau latéral droit -->
+    <aside class="sidebar sidebar-right">
+      <!-- Info Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <h3>ℹ️ Information</h3>
+        </div>
+        <div class="panel-content">
+          <div class="info-section">
+            <h4>Phase 1 - Prototype ✅</h4>
+            <p>MediaPipe + Kalidokit integration</p>
+          </div>
+
+          <div class="info-section">
+            <h4>Phase 2 - Stabilization ✅</h4>
+            <p>Motion smoothing & correction</p>
+          </div>
+
+          <div class="info-section">
+            <h4>Phase 3 - AI 🚧</h4>
+            <p>LSTM-based motion prediction</p>
+            <small>Ready for ONNX model integration</small>
+          </div>
+
+          <div class="info-section">
+            <h4>Phase 4 - Interaction ✅</h4>
+            <p>3D object manipulation with Raycaster</p>
+          </div>
+
+          <div class="info-section">
+            <h4>Phase 5 - Security ✅</h4>
+            <p>100% client-side processing</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls Info -->
+      <div class="panel">
+        <div class="panel-header">
+          <h3>🎮 Controls</h3>
+        </div>
+        <div class="panel-content">
+          <div class="control-item">
+            <strong>Left Click + Drag</strong>
+            <span>Rotate camera</span>
+          </div>
+          <div class="control-item">
+            <strong>Right Click + Drag</strong>
+            <span>Pan camera</span>
+          </div>
+          <div class="control-item">
+            <strong>Scroll</strong>
+            <span>Zoom in/out</span>
+          </div>
+          <div class="control-item">
+            <strong>Click Cube</strong>
+            <span>Interact with object</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <p>
+        Avatar IA Motion Tracking | 
+        Angular {{ '18' }} + Three.js + MediaPipe + Kalidokit
+        @if (isAiEnabled) {
+          <span> + ONNX Runtime</span>
+        }
+      </p>
+      <p class="footer-note">
+        🔒 All processing happens in your browser. No data is sent to any server.
+      </p>
+    </div>
+  </footer>
+</div>

@@ -1,28 +1,105 @@
-# Angular specific
-/dist/
-/out-tsc/
-/tmp/
-/coverage/
-/e2e/test-output/
-/.angular/
-.angular/
-
-# Node modules and dependency files
-/node_modules/
-/package-lock.json
-/yarn.lock
-
-# Environment files
-/.env
-
-# Angular CLI and build artefacts
-/.angular-cli.json
-/.ng/
-
-# TypeScript cache
-*.tsbuildinfo
-
-# Logs
+# Ignore node modules
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Build outputs
+dist/
+tmp/
+out-tsc/
+bazel-out/
+
+# Dependency directories
+.pnp.*
+.yarn/
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/
+
+# IDE - IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Misc
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# System files
+.DS_Store
+Desktop.ini
+
+# Angular specific
+.angular/
+.sass-cache/
+connect.lock
+coverage/
+libpeerconnection.log
+testem.log
+typings/
+
+# E2E
+e2e/*.js
+e2e/*.map
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs/
+*.log
+
+# MediaPipe files (trop volumineux pour git)
+src/assets/mediapipe/
+
+# AI Models (décommenter si vous ne voulez pas versionner les modèles)
+# src/assets/models/*.onnx
+# src/assets/models/*.glb
+# src/assets/models/*.fbx
+
+# Training data
+*.pth
+*.pt
+training_data/
+checkpoints/
+
+# Python (si vous ajoutez des scripts d'entraînement)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Windows
+[Tt]humbs.db
+ehthumbs.db
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
